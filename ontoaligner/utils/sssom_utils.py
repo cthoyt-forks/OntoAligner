@@ -126,7 +126,9 @@ class ConfidenceTuple(NamedTuple):
 
 
 def get_score(
-    matching: Matching, aligner: BaseOMModel
+    matching: Matching,
+    *,
+    aligner: BaseOMModel,
 ) -> SimilarityScoreTuple | ConfidenceTuple | None:
     score = matching.get("score")
     if score is None:

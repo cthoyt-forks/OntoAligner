@@ -108,7 +108,7 @@ def _get_aligner_metadata(
             aligner=aligner,
         ).curie
     }
-    match get_score(matching, aligner):
+    match get_score(matching, aligner=aligner):
         case SimilarityScoreTuple(similarity_score, measure):
             metadata["similarity_score"] = similarity_score
             metadata["similarity_measure"] = measure
