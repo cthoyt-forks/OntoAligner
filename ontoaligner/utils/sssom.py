@@ -11,13 +11,27 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+from __future__ import annotations
+
 from io import StringIO
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 import pandas as pd
 import bioregistry
 from curies import Converter
 import sssom as sss
 from ontoaligner import __version__
+from ontoaligner.utils.sssom_utils import (
+    get_justification,
+    Matching,
+    SimilarityScoreTuple,
+    ConfidenceTuple,
+    get_score,
+    Postprocessor,
+)
+
+if TYPE_CHECKING:
+    from ontoaligner.base.model import BaseOMModel
 
 
 def _get_label_lookup(entities: Optional[List[Dict]]) -> Dict[str, str]:
@@ -62,10 +76,10 @@ def _get_converter(
     return bioregistry.get_default_converter()
 
 def _get_aligner_metadata(
-    matching: Dict,
-    aligner: Optional[Any] = None,
-    postprocessor: Optional[Any] = None,
-    postprocessor_params: Optional[Dict] = None,
+    matching: Matching,
+    aligner: Optional[BaseOMModel] = None,
+    postprocessor: Optional[Postprocessor] = None,
+    postprocessor_params: Optional[Dict[str, Any]] = None,
 ) -> Dict:
     """
     Get SSSOM metadata based on the aligner and postprocessor.
@@ -84,163 +98,28 @@ def _get_aligner_metadata(
     Returns:
         Dict: SSSOM mapping metadata.
     """
-    metadata = {
-        "mapping_justification": "semapv:UnspecifiedMatching",
-    }
-
     if aligner is None:
-        return metadata
+        return {"mapping_justification": "semapv:UnspecifiedMatching"}
 
-    aligner_name = aligner.__class__.__name__
-    postprocessor_name = (
-        postprocessor.__name__ if postprocessor is not None else None
-    )
-    postprocessor_params = postprocessor_params or {}
-
-    score = matching.get("score")
-    has_retrieval_threshold = (
-        postprocessor_name == "retriever_postprocessor"
-        and "threshold" in postprocessor_params
-    )
-
-    fuzzy_aligners = {
-        "SimpleFuzzySMLightweight": "RapidFuzz fuzz.ratio",
-        "WeightedFuzzySMLightweight": "RapidFuzz fuzz.WRatio",
-        "TokenSetFuzzySMLightweight": "RapidFuzz fuzz.token_set_ratio",
+    metadata: Dict[str, Any] = {
+        "mapping_justification": get_justification(
+            postprocessor=postprocessor,
+            postprocessor_params=postprocessor_params,
+            aligner=aligner,
+        ).curie
     }
-
-    graph_aligners = {
-        "ConvEAligner",
-        "TransDAligner",
-        "TransEAligner",
-        "TransFAligner",
-        "TransHAligner",
-        "TransRAligner",
-        "DistMultAligner",
-        "ComplExAligner",
-        "HolEAligner",
-        "RotatEAligner",
-        "SimplEAligner",
-        "CrossEAligner",
-        "BoxEAligner",
-        "CompGCNAligner",
-        "MuREAligner",
-        "QuatEAligner",
-        "SEAligner",
-    }
-
-    if postprocessor_name in {
-        "rag_heuristic_postprocessor",
-        "rag_hybrid_postprocessor",
-    }:
-        metadata["mapping_justification"] = "semapv:CompositeMatching"
-
-    elif aligner_name in fuzzy_aligners:
-        metadata["mapping_justification"] = (
-            "semapv:LexicalSimilarityThresholdMatching"
-        )
-
-    elif aligner_name in {"TFIDFRetrieval", "BM25Retrieval"} and has_retrieval_threshold:
-        metadata["mapping_justification"] = (
-            "semapv:LexicalSimilarityThresholdMatching"
-        )
-
-    elif aligner_name in {"SBERTRetrieval", "AdaRetrieval"} and has_retrieval_threshold:
-        metadata["mapping_justification"] = (
-            "semapv:SemanticSimilarityThresholdMatching"
-        )
-
-    elif aligner_name in graph_aligners:
-        metadata["mapping_justification"] = "semapv:StructuralMatching"
-
-    elif aligner_name == "PropMatchAligner":
-        disable_domain_range = getattr(
-            aligner,
-            "disable_domain_range",
-            getattr(aligner, "kwargs", {}).get("disable_domain_range", False),
-        )
-        metadata["mapping_justification"] = (
-            "semapv:LexicalSimilarityThresholdMatching"
-            if disable_domain_range
-            else "semapv:CompositeMatching"
-        )
-
-    elif aligner_name == "OLaLaHighPrecisionMatcher":
-        metadata["mapping_justification"] = "semapv:LexicalMatching"
-
-    elif aligner_name in {"FLORAAligner", "EnsembleLearningAligner"}:
-        metadata["mapping_justification"] = "semapv:CompositeMatching"
-
-    if score is not None:
-        score = float(score)
-
-        if aligner_name in fuzzy_aligners:
-            metadata["similarity_score"] = score
-            metadata["similarity_measure"] = fuzzy_aligners[aligner_name]
-
-        elif aligner_name == "TFIDFRetrieval":
-            metadata["similarity_score"] = score
-            metadata["similarity_measure"] = "TF-IDF cosine similarity"
-
-        elif aligner_name == "SBERTRetrieval" and 0 <= score <= 1:
-            metadata["similarity_score"] = score
-            metadata["similarity_measure"] = (
-                "cosine similarity over SentenceTransformer embeddings"
-            )
-
-        elif aligner_name == "AdaRetrieval" and 0 <= score <= 1:
-            metadata["similarity_score"] = score
-            metadata["similarity_measure"] = (
-                "cosine similarity over OpenAI embeddings"
-            )
-
-        elif aligner_name in graph_aligners and 0 <= score <= 1:
-            metadata["similarity_score"] = score
-            metadata["similarity_measure"] = (
-                "cosine similarity over graph embeddings"
-            )
-
-        elif (
-            aligner_name
-            in {
-                "OLaLaHighPrecisionMatcher",
-                "OLaLaLLMAligner",
-                "OLaLaAligner",
-            }
-            and 0 <= score <= 1
-        ):
-            metadata["confidence"] = score
-
-    if (
-        postprocessor_name == "rag_heuristic_postprocessor"
-        and matching.get("confidence") is not None
-    ):
-        confidence = float(matching["confidence"])
-        if 0 <= confidence <= 1:
+    match get_score(matching, aligner):
+        case SimilarityScoreTuple(similarity_score, measure):
+            metadata["similarity_score"] = similarity_score
+            metadata["similarity_measure"] = measure
+        case ConfidenceTuple(confidence):
             metadata["confidence"] = confidence
-
-    if (
-        postprocessor_name
-        in {"rag_heuristic_postprocessor", "rag_hybrid_postprocessor"}
-        and score is not None
-        and 0 <= score <= 1
-    ):
-        if "BERTRetriever" in aligner_name:
-            metadata["similarity_score"] = score
-            metadata["similarity_measure"] = (
-                "cosine similarity over SentenceTransformer embeddings"
-            )
-        elif "AdaRetriever" in aligner_name:
-            metadata["similarity_score"] = score
-            metadata["similarity_measure"] = (
-                "cosine similarity over OpenAI embeddings"
-            )
 
     return metadata
 
 
 def sssom_alignment_generator(
-    matchings: List[Dict],
+    matchings: List[Matching],
     source: Optional[List[Dict]] = None,
     target: Optional[List[Dict]] = None,
     *,
@@ -248,9 +127,9 @@ def sssom_alignment_generator(
     mapping_set_metadata: Dict,
     curie_map: Optional[Dict[str, str]] = None,
     pipeline: Optional[Any] = None,
-    aligner: Optional[Any] = None,
-    postprocessor: Optional[Any] = None,
-    postprocessor_params: Optional[Dict] = None,
+    aligner: Optional[BaseOMModel] = None,
+    postprocessor: Optional[Postprocessor] = None,
+    postprocessor_params: Optional[Dict[str, Any]] = None,
     mapping_justification: Optional[str] = None,
     include_aligner_metadata: bool = True,
  ) -> str:
