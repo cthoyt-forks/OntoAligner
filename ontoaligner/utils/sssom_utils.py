@@ -11,8 +11,8 @@ if TYPE_CHECKING:
     from ontoaligner.base.model import BaseOMModel
 
 __all__ = [
-    "fuzzy_aligners",
-    "graph_aligners",
+    "FUZZY_ALIGNERS",
+    "GRAPH_ALIGNERS",
     "get_justification",
     "get_score",
     "SimilarityScoreTuple",
@@ -24,12 +24,17 @@ __all__ = [
 Matching: TypeAlias = Dict
 Postprocessor: TypeAlias = Callable
 
-fuzzy_aligners = {
+#: A list of fuzzy aligners from
+#: :mod:`ontoaligner.aligner.lightweight.models`
+FUZZY_ALIGNERS = {
     "SimpleFuzzySMLightweight": "RapidFuzz fuzz.ratio",
     "WeightedFuzzySMLightweight": "RapidFuzz fuzz.WRatio",
     "TokenSetFuzzySMLightweight": "RapidFuzz fuzz.token_set_ratio",
 }
-graph_aligners = {
+
+#: A list of aligner class names from
+#: :mod:`ontoaligner.aligner.graph.models`
+GRAPH_ALIGNERS = {
     "ConvEAligner",
     "TransDAligner",
     "TransEAligner",
@@ -72,7 +77,7 @@ def get_justification(
     }:
         return v.composite_matching_process
 
-    elif aligner_name in fuzzy_aligners:
+    elif aligner_name in FUZZY_ALIGNERS:
         return v.lexical_similarity_threshold_based_matching_process
 
     elif (
@@ -83,7 +88,7 @@ def get_justification(
     elif aligner_name in {"SBERTRetrieval", "AdaRetrieval"} and has_retrieval_threshold:
         return v.semantic_similarity
 
-    elif aligner_name in graph_aligners:
+    elif aligner_name in GRAPH_ALIGNERS:
         return v.structural_matching
 
     elif aligner_name == "PropMatchAligner":
@@ -130,8 +135,8 @@ def get_score(
     aligner_name = aligner.__class__.__name__
     score = float(score)
 
-    if aligner_name in fuzzy_aligners:
-        return SimilarityScoreTuple(score, fuzzy_aligners[aligner_name])
+    if aligner_name in FUZZY_ALIGNERS:
+        return SimilarityScoreTuple(score, FUZZY_ALIGNERS[aligner_name])
 
     elif aligner_name == "TFIDFRetrieval":
         return SimilarityScoreTuple(score, "TF-IDF cosine similarity")
@@ -144,7 +149,7 @@ def get_score(
     elif aligner_name == "AdaRetrieval" and 0 <= score <= 1:
         return SimilarityScoreTuple(score, "cosine similarity over OpenAI embeddings")
 
-    elif aligner_name in graph_aligners and 0 <= score <= 1:
+    elif aligner_name in GRAPH_ALIGNERS and 0 <= score <= 1:
         return SimilarityScoreTuple(score, "cosine similarity over graph embeddings")
 
     elif (
