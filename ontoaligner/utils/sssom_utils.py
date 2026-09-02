@@ -24,16 +24,16 @@ __all__ = [
 Matching: TypeAlias = Dict
 Postprocessor: TypeAlias = Callable
 
-#: A list of fuzzy aligners from
-#: :mod:`ontoaligner.aligner.lightweight.models`
+#: A list of fuzzy aligners from the
+#: :mod:`ontoaligner.aligner.lightweight.models` module
 FUZZY_ALIGNERS = {
     "SimpleFuzzySMLightweight": "RapidFuzz fuzz.ratio",
     "WeightedFuzzySMLightweight": "RapidFuzz fuzz.WRatio",
     "TokenSetFuzzySMLightweight": "RapidFuzz fuzz.token_set_ratio",
 }
 
-#: A list of aligner class names from
-#: :mod:`ontoaligner.aligner.graph.models`
+#: A list of aligner class names from the
+#: :mod:`ontoaligner.aligner.graph.models` module
 GRAPH_ALIGNERS = {
     "ConvEAligner",
     "TransDAligner",
